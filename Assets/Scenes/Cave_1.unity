@@ -3202,7 +3202,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2d4f5c0e78c27a747b2bb152c6ca88e0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraFollowScript
-  followSpeed: 0.1
+  followSpeed: 1
   offset: {x: 0, y: 0, z: -20}
 --- !u!1 &527062895
 GameObject:
