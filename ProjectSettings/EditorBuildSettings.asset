@@ -5,8 +5,17 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
+  - enabled: 0
+    path: Assets/Scenes/Cave_1_smaller.unity
+    guid: 8c9cfa26abfee488c85f1582747f6a02
+  - enabled: 1
+    path: Assets/Scenes/Cave_3.unity
+    guid: ae26a38b2386cde4b8ba3cb11d867fa9
   - enabled: 1
     path: Assets/Scenes/Cave_1.unity
-    guid: 8c9cfa26abfee488c85f1582747f6a02
+    guid: 549fa91ef5727fc4b8173c88fb9997ae
+  - enabled: 1
+    path: Assets/Scenes/Cave_2.unity
+    guid: cc1b9df7bb11b51468c1d98601428640
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
