@@ -1,9 +1,9 @@
+using System.Collections;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
-using System.Collections;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
-using UnityEngine.UIElements;
 
 public class PlayerController : MonoBehaviour
 {
@@ -28,16 +28,14 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private LayerMask whatIsGround;
     [Space(5)]
 
-
     [Header("Dash Settings")]
     [SerializeField] private float dashSpeed;
     [SerializeField] private float dashTime;
     [SerializeField] private float dashCooldown;
     [SerializeField] private GameObject dashEffect;
     private bool canDash = true;
-    private bool dashed = true;
+    private bool dashed = false; // Default to false so dash works on game launch
     [Space(5)]
-
 
     [Header("Attack Settings")]
     [SerializeField] float damage;
@@ -72,7 +70,7 @@ public class PlayerController : MonoBehaviour
 
     [Header("Mana Settings")]
     [SerializeField] UnityEngine.UI.Image manaStorage;
-    [SerializeField] float mana;
+    [SerializeField] float mana = 0f;
     [SerializeField] float manaDrainSpeed;
     [SerializeField] float manaGain;
     bool enoughManaToHeal = false;
@@ -84,14 +82,13 @@ public class PlayerController : MonoBehaviour
     [SerializeField] float timeBetweenCast = 0.5f;
     [SerializeField] float spellDamage;
     [SerializeField] float downSpellForce;
-    
+
     [SerializeField] GameObject sideSpellFireball;
     [SerializeField] GameObject upSpellExplosion;
     [SerializeField] GameObject downSpellFireball;
     float timeSinceCast = 0.3f;
     float castOrHealTimer;
     [Space(5)]
-
 
     [HideInInspector] public PlayerStateList pState;
     private Animator anim;
@@ -100,10 +97,6 @@ public class PlayerController : MonoBehaviour
     private float xAxis, yAxis;
     private float gravity;
 
-
-
-    
-
     public static PlayerController Instance;
 
     private void Awake()
@@ -111,40 +104,160 @@ public class PlayerController : MonoBehaviour
         if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
+            return;
         }
-        else
-        {
-            Instance = this;
-        }
+
+        Instance = this;
         DontDestroyOnLoad(gameObject);
+
+        rb = GetComponent<Rigidbody2D>();
+        anim = GetComponent<Animator>();
+
+        if (rb != null)
+        {
+            gravity = rb.gravityScale;
+        }
+
+        if (health <= 0)
+        {
+            health = maxHealth;
+        }
     }
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    private void OnEnable()
+    {
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    private void OnDisable()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
+    public void ResetDashState()
+    {
+        StopAllCoroutines();
+        dashed = false;
+        canDash = true;
+
+        if (rb != null)
+        {
+            rb.gravityScale = gravity <= 0 ? 9.5f : gravity;
+        }
+    }
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        ResetPlayerState();
+    }
+
+    public void ResetPlayerState()
+    {
+        Time.timeScale = 1f;
+        restoreTime = false;
+        hitStopCoroutine = null;
+        StopAllCoroutines();
+
+        if (rb != null)
+        {
+            rb.linearVelocity = Vector2.zero;
+            rb.angularVelocity = 0f;
+            rb.bodyType = RigidbodyType2D.Dynamic;
+            rb.simulated = true;
+
+            if (gravity <= 0) gravity = 9.5f;
+            rb.gravityScale = gravity;
+        }
+
+        if (pState != null)
+        {
+            pState.cutscene = false;
+            pState.invincible = false;
+            pState.dashing = false;
+            pState.casting = false;
+            pState.recoilingX = false;
+            pState.recoilingY = false;
+            pState.healing = false;
+            pState.jumping = false;
+        }
+
+        if (anim != null)
+        {
+            anim.SetBool("Casting", false);
+            anim.SetBool("Healing", false);
+            anim.SetBool("Walking", false);
+            anim.SetBool("Jumping", false);
+
+            anim.Rebind();
+            anim.Update(0f);
+        }
+
+        GameObject canvasUI = GameObject.Find("Canvas_UI");
+
+        if (canvasUI != null)
+        {
+            Transform manaContainer = canvasUI.transform.Find("Mana Container");
+
+            if (manaContainer != null)
+            {
+                UnityEngine.UI.Image[] images = manaContainer.GetComponentsInChildren<UnityEngine.UI.Image>(true);
+
+                foreach (UnityEngine.UI.Image img in images)
+                {
+                    if (img.type == UnityEngine.UI.Image.Type.Filled || img.gameObject.name.Contains("Fill") || img.gameObject.name == "Mana")
+                    {
+                        if (img.gameObject.name != "Mana Container" && !img.gameObject.name.ToLower().Contains("background") && !img.gameObject.name.ToLower().Contains("frame"))
+                        {
+                            manaStorage = img;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (manaStorage != null)
+        {
+            manaStorage.type = UnityEngine.UI.Image.Type.Filled;
+            manaStorage.fillAmount = mana;
+        }
+
+        if (onHealthChangedCallback != null)
+        {
+            onHealthChangedCallback.Invoke();
+        }
+
+        if (sr != null) sr.material.color = Color.white;
+
+        // Force Dash Reset
+        canDash = true;
+        dashed = false;
+        airJumpCounter = 0;
+
+        if (downSpellFireball != null) downSpellFireball.SetActive(false);
+    }
+
     void Start()
     {
         pState = GetComponent<PlayerStateList>();
 
-        rb = GetComponent<Rigidbody2D>();
-        sr = GetComponent<SpriteRenderer>();
+        if (rb == null) rb = GetComponent<Rigidbody2D>();
+        if (sr == null) sr = GetComponent<SpriteRenderer>();
+        if (anim == null) anim = GetComponent<Animator>();
 
-        anim = GetComponent<Animator>();
+        if (rb != null) gravity = rb.gravityScale;
 
-        gravity = rb.gravityScale;
-
-        Mana = mana;
-        manaStorage.fillAmount = Mana;
-
-        Health = maxHealth;
+        ResetPlayerState();
     }
 
     private void OnDrawGizmos()
     {
         Gizmos.color = Color.red;
-        Gizmos.DrawWireCube(SideAttackTransform.position, SideAttackArea);
-        Gizmos.DrawWireCube(UpAttackTransform.position, UpAttackArea);
-        Gizmos.DrawWireCube(DownAttackTransform.position, DownAttackArea);
+        if (SideAttackTransform != null) Gizmos.DrawWireCube(SideAttackTransform.position, SideAttackArea);
+        if (UpAttackTransform != null) Gizmos.DrawWireCube(UpAttackTransform.position, UpAttackArea);
+        if (DownAttackTransform != null) Gizmos.DrawWireCube(DownAttackTransform.position, DownAttackArea);
     }
-    // Update is called once per frame
+
     void Update()
     {
         if (pState.cutscene) return;
@@ -165,18 +278,24 @@ public class PlayerController : MonoBehaviour
         Jump();
         StartDash();
         Attack();
-
     }
+
     private void OnTriggerEnter2D(Collider2D _other)
     {
-        if(_other.GetComponent<Enemy>() != null && pState.casting)
+        if (_other.GetComponent<Enemy>() != null && pState.casting)
         {
             _other.GetComponent<Enemy>().EnemyHit(spellDamage, (_other.transform.position - transform.position).normalized, -recoilYSpeed);
         }
     }
+
     private void FixedUpdate()
     {
         if (pState.cutscene) return;
+
+        if (!pState.dashing && !pState.recoilingY && !pState.casting)
+        {
+            rb.gravityScale = gravity;
+        }
 
         if (pState.dashing) return;
         Recoil();
@@ -188,12 +307,14 @@ public class PlayerController : MonoBehaviour
         {
             transform.localScale = new Vector2(-1, transform.localScale.y);
             pState.lookingRight = false;
-        }else if (xAxis > 0)
+        }
+        else if (xAxis > 0)
         {
             transform.localScale = new Vector2(1, transform.localScale.y);
             pState.lookingRight = true;
         }
     }
+
     void GetInputs()
     {
         xAxis = Input.GetAxisRaw("Horizontal");
@@ -209,6 +330,7 @@ public class PlayerController : MonoBehaviour
             castOrHealTimer = 0;
         }
     }
+
     private void Move()
     {
         if (pState.recoilingX || pState.casting) return;
@@ -216,81 +338,129 @@ public class PlayerController : MonoBehaviour
         rb.linearVelocity = new Vector2(walkSpeed * xAxis, rb.linearVelocityY);
         anim.SetBool("Walking", rb.linearVelocityX != 0 && Grounded());
     }
+
     void StartDash()
     {
-        if(Input.GetButtonDown("Dash") && canDash && !dashed)
-        {
-            StartCoroutine(Dash());
-            dashed = true;
-        }
-
         if (Grounded())
         {
             dashed = false;
         }
+
+        if (Input.GetButtonDown("Dash") && canDash && !dashed)
+        {
+            StartCoroutine(Dash());
+            dashed = true;
+        }
     }
+
     IEnumerator Dash()
     {
         canDash = false;
         pState.dashing = true;
         anim.SetTrigger("Dashing");
         rb.gravityScale = 0;
+
         int _dir = pState.lookingRight ? 1 : -1;
         rb.linearVelocity = new Vector2(_dir * dashSpeed, 0);
-        if (Grounded()) Instantiate(dashEffect, transform);
-        yield return new WaitForSecondsRealtime(dashTime);
-        rb.gravityScale = gravity;
-        pState.dashing = false;
-        yield return new WaitForSecondsRealtime(dashCooldown);
-        canDash = true;
+
+        if (Grounded() && dashEffect != null)
+        {
+            Instantiate(dashEffect, transform);
+        }
+
+        try
+        {
+            yield return new WaitForSecondsRealtime(dashTime);
+            rb.gravityScale = gravity;
+            pState.dashing = false;
+            yield return new WaitForSecondsRealtime(dashCooldown);
+        }
+        finally
+        {
+            rb.gravityScale = gravity;
+            pState.dashing = false;
+            canDash = true;
+
+            // Only clear 'dashed' if on the ground, otherwise ground check will clear it when landing
+            if (Grounded())
+            {
+                dashed = false;
+            }
+        }
     }
 
     public IEnumerator WalkIntoNewScene(Vector2 _exitDir, float _delay)
     {
-        //If exit direction is upwards
-        if(_exitDir.y > 0)
+        pState.cutscene = true;
+
+        // Reset velocity on spawn
+        if (rb != null)
         {
-            rb.linearVelocity = jumpForce * _exitDir;
+            rb.linearVelocity = Vector2.zero;
         }
 
-        //If exit direction requires horizontal movement
-        if (_exitDir.x != 0)
-        {
-            xAxis = _exitDir.x > 0 ? 1 : -1;
+        float timer = 0f;
 
-            Move();
+        while (timer < _delay)
+        {
+            timer += Time.deltaTime;
+
+            // Force walk direction
+            if (_exitDir.x != 0)
+            {
+                xAxis = _exitDir.x > 0 ? 1 : -1;
+                Move();
+            }
+
+            // If the player walks off a ledge during the entrance cutscene, 
+            // cancel the forced walk so they don't get launched horizontally in mid-air
+            if (!Grounded())
+            {
+                break;
+            }
+
+            yield return null;
         }
 
-        Flip();
-        yield return new WaitForSeconds(_delay);
+        // Stop horizontal force immediately
+        xAxis = 0;
+        if (rb != null)
+        {
+            rb.linearVelocity = new Vector2(0, rb.linearVelocityY);
+        }
+
+        // Restore player control
         pState.cutscene = false;
+        canDash = true;
+        dashed = false;
     }
 
     void Attack()
     {
         timeSinceAttack += Time.deltaTime;
-        if(attack && timeSinceAttack >= timeBetweenAttack)
+        if (attack && timeSinceAttack >= timeBetweenAttack)
         {
             timeSinceAttack = 0;
             anim.SetTrigger("Attacking");
 
             if (yAxis == 0 || (yAxis < 0 && Grounded()))
             {
-                Hit(SideAttackTransform, SideAttackArea, ref pState.recoilingX, recoilXSpeed);
                 Instantiate(slashEffect, SideAttackTransform);
+                Hit(SideAttackTransform, SideAttackArea, ref pState.recoilingX, recoilXSpeed);
             }
-            else if(yAxis > 0)
+            else if (yAxis > 0)
             {
-                Hit(UpAttackTransform, UpAttackArea, ref pState.recoilingY, recoilYSpeed);
                 SlashEffectAngle(slashEffect, 80, UpAttackTransform);
+                Hit(UpAttackTransform, UpAttackArea, ref pState.recoilingY, recoilYSpeed);
             }
             else if (yAxis < 0 && !Grounded())
             {
-                Hit(DownAttackTransform, DownAttackArea, ref pState.recoilingY, recoilYSpeed);
                 SlashEffectAngle(slashEffect, -90, DownAttackTransform);
+                Hit(DownAttackTransform, DownAttackArea, ref pState.recoilingY, recoilYSpeed);
             }
         }
     }
+
     private void Hit(Transform _attackTranform, Vector2 _attackArea, ref bool _recoilDir, float _recoilStrength)
     {
         Collider2D[] objectsToHit = Physics2D.OverlapBoxAll(_attackTranform.position, _attackArea, 0, attackableLayer);
@@ -302,9 +472,9 @@ public class PlayerController : MonoBehaviour
 
         for (int i = 0; i < objectsToHit.Length; i++)
         {
-            if(objectsToHit[i].GetComponent<Enemy>() != null)
+            if (objectsToHit[i].GetComponent<Enemy>() != null)
             {
-                objectsToHit[i].GetComponent<Enemy>().EnemyHit(damage, (transform.position - objectsToHit[i].transform.position).normalized,_recoilStrength);
+                objectsToHit[i].GetComponent<Enemy>().EnemyHit(damage, (transform.position - objectsToHit[i].transform.position).normalized, _recoilStrength);
 
                 if (objectsToHit[i].CompareTag("Enemy"))
                 {
@@ -313,12 +483,14 @@ public class PlayerController : MonoBehaviour
             }
         }
     }
+
     void SlashEffectAngle(GameObject _slashEffect, int _effectAngle, Transform _attackTransform)
     {
         _slashEffect = Instantiate(_slashEffect, _attackTransform);
-        _slashEffect.transform.eulerAngles = new Vector3(0,0, _effectAngle);
+        _slashEffect.transform.eulerAngles = new Vector3(0, 0, _effectAngle);
         _slashEffect.transform.localScale = new Vector2(transform.localScale.x, transform.localScale.y);
     }
+
     void Recoil()
     {
         if (pState.recoilingX)
@@ -351,11 +523,10 @@ public class PlayerController : MonoBehaviour
             rb.gravityScale = gravity;
         }
 
-        //stop recoil
         if (pState.recoilingX)
         {
             recoilXTimer += Time.deltaTime;
-            if (recoilXTimer >= 0.05f) // 0.1s is a good starting point for a "snap" recoil
+            if (recoilXTimer >= 0.05f)
             {
                 StopRecoilX();
             }
@@ -375,16 +546,20 @@ public class PlayerController : MonoBehaviour
             }
         }
     }
+
     void StopRecoilX()
     {
         recoilXTimer = 0;
         pState.recoilingX = false;
     }
+
     void StopRecoilY()
     {
         recoilYTimer = 0;
         pState.recoilingY = false;
+        rb.gravityScale = gravity;
     }
+
     public void TakeDamage(float _damage)
     {
         pState.healing = false;
@@ -394,27 +569,41 @@ public class PlayerController : MonoBehaviour
         Health -= Mathf.RoundToInt(_damage);
         StartCoroutine(StopTakingDamage());
     }
+
     IEnumerator StopTakingDamage()
     {
         pState.invincible = true;
         Vector3 spawnPos = new Vector3(transform.position.x, transform.position.y, transform.position.z - 1f);
-        GameObject _bloodSpurtParticles = Instantiate(bloodSpurt, spawnPos, Quaternion.identity); 
-        Destroy(_bloodSpurtParticles, .2f);
-        anim.SetTrigger("TakeDamage");
-        yield return new WaitForSeconds(1f);
-        pState.invincible = false;
+
+        if (bloodSpurt != null)
+        {
+            GameObject _bloodSpurtParticles = Instantiate(bloodSpurt, spawnPos, Quaternion.identity);
+            Destroy(_bloodSpurtParticles, .2f);
+        }
+
+        if (anim != null) anim.SetTrigger("TakeDamage");
+
+        try
+        {
+            yield return new WaitForSeconds(1f);
+        }
+        finally
+        {
+            if (pState != null) pState.invincible = false;
+        }
     }
 
     void FlashWhileInvincible()
     {
-        sr.material.color = pState.invincible ? Color.Lerp(Color.white, Color.black, Mathf.PingPong(Time.time * hitFlashSpeed, 1f)) 
+        sr.material.color = pState.invincible ? Color.Lerp(Color.white, Color.black, Mathf.PingPong(Time.time * hitFlashSpeed, 1f))
             : Color.white;
     }
+
     void RestoreTimeScale()
     {
         if (restoreTime)
         {
-            if(Time.timeScale < 1)
+            if (Time.timeScale < 1)
             {
                 Time.timeScale += Time.unscaledDeltaTime * restoreTimeSpeed;
             }
@@ -425,11 +614,12 @@ public class PlayerController : MonoBehaviour
             }
         }
     }
+
     public void HitStopTime(float _newTimeScale, int _restoreSpeed, float _delay)
     {
         restoreTimeSpeed = _restoreSpeed;
         Time.timeScale = _newTimeScale;
-        if(_delay > 0)
+        if (_delay > 0)
         {
             if (hitStopCoroutine != null) StopCoroutine(hitStopCoroutine);
             restoreTime = false;
@@ -440,6 +630,7 @@ public class PlayerController : MonoBehaviour
             restoreTime = true;
         }
     }
+
     IEnumerator StartTimeAgain(float _delay)
     {
         yield return new WaitForSecondsRealtime(_delay);
@@ -448,42 +639,39 @@ public class PlayerController : MonoBehaviour
 
     public int Health
     {
-        get { return health; } 
+        get { return health; }
         set
         {
-            if(health != value)
+            if (health != value)
             {
                 health = Mathf.Clamp(value, 0, maxHealth);
 
-                if(onHealthChangedCallback != null)
+                if (onHealthChangedCallback != null)
                 {
                     onHealthChangedCallback.Invoke();
                 }
             }
         }
     }
+
     void Heal()
     {
         if (Mana >= manaHealCost) enoughManaToHeal = true;
-        if (Input.GetButton("Cast/Heal") && castOrHealTimer > 0.15f && Health < maxHealth && enoughManaToHeal && !pState.jumping 
+        if (Input.GetButton("Cast/Heal") && castOrHealTimer > 0.15f && Health < maxHealth && enoughManaToHeal && !pState.jumping
             && !pState.dashing && Grounded() && !pState.invincible && !pState.recoilingX)
         {
-            
             rb.linearVelocity = new Vector2(0, 0);
             anim.SetBool("Walking", false);
             anim.SetBool("Jumping", false);
             pState.healing = true;
             anim.SetBool("Healing", true);
 
-            float manaAtStartOfPips = Mana;
             healTimer += Time.deltaTime;
-            float progress = healTimer / timeToHeal;
             Mana -= Time.deltaTime * manaDrainSpeed;
             if (healTimer >= timeToHeal)
             {
                 Health++;
                 healTimer = 0;
-                //Mana = Mathf.Round(Mana * 5f) / 5f;
                 enoughManaToHeal = false;
             }
         }
@@ -495,21 +683,23 @@ public class PlayerController : MonoBehaviour
             enoughManaToHeal = false;
         }
     }
+
     float Mana
     {
         get { return mana; }
         set
         {
-            if (mana != value)
+            mana = Mathf.Clamp(value, 0, 1);
+            if (manaStorage != null)
             {
-                mana = Mathf.Clamp(value, 0, 1);
-                manaStorage.fillAmount = Mana;
+                manaStorage.fillAmount = mana;
             }
         }
     }
+
     void CastSpell()
     {
-        if(Input.GetButtonUp("Cast/Heal") && castOrHealTimer <= 0.15f && timeSinceCast >= timeBetweenCast && Mana >= manaSpellCost)
+        if (Input.GetButtonUp("Cast/Heal") && castOrHealTimer <= 0.15f && timeSinceCast >= timeBetweenCast && Mana >= manaSpellCost)
         {
             pState.casting = true;
             timeSinceCast = 0;
@@ -522,55 +712,60 @@ public class PlayerController : MonoBehaviour
 
         if (Grounded())
         {
-            downSpellFireball.SetActive(false);
+            if (downSpellFireball != null) downSpellFireball.SetActive(false);
         }
 
-        if (downSpellFireball.activeInHierarchy)
+        if (downSpellFireball != null && downSpellFireball.activeInHierarchy)
         {
             rb.linearVelocity += downSpellForce * Vector2.down;
         }
     }
+
     IEnumerator CastCoroutine()
     {
+        pState.casting = true;
         anim.SetBool("Casting", true);
         rb.linearVelocity = Vector2.zero;
         rb.gravityScale = 0;
-        yield return new WaitForSeconds(0.3f);
 
-        //side spell
-        if(yAxis == 0 || (yAxis < 0 && Grounded()))
+        try
         {
-            GameObject _fireBall = Instantiate(sideSpellFireball, SideAttackTransform.position, Quaternion.identity);
+            yield return new WaitForSeconds(0.3f);
 
-            if (pState.lookingRight)
+            if (yAxis == 0 || (yAxis < 0 && Grounded()))
             {
-                _fireBall.transform.eulerAngles = Vector3.zero;
+                GameObject _fireBall = Instantiate(sideSpellFireball, SideAttackTransform.position, Quaternion.identity);
+
+                if (pState.lookingRight)
+                {
+                    _fireBall.transform.eulerAngles = Vector3.zero;
+                }
+                else
+                {
+                    _fireBall.transform.eulerAngles = new Vector2(_fireBall.transform.eulerAngles.x, 180);
+                }
+                pState.recoilingX = true;
             }
-            else
+            else if (yAxis > 0)
             {
-                _fireBall.transform.eulerAngles = new Vector2(_fireBall.transform.eulerAngles.x, 180);
+                Instantiate(upSpellExplosion, transform);
             }
-            pState.recoilingX = true;
-        }
+            else if (yAxis < 0 && !Grounded())
+            {
+                if (downSpellFireball != null) downSpellFireball.SetActive(true);
+            }
 
-        //up spell
-        else if(yAxis > 0)
+            Mana -= manaSpellCost;
+            yield return new WaitForSeconds(0.3f);
+        }
+        finally
         {
-            Instantiate(upSpellExplosion, transform);
+            rb.gravityScale = gravity;
+            if (anim != null) anim.SetBool("Casting", false);
+            pState.casting = false;
         }
-
-        //down spell
-        else if(yAxis < 0 && !Grounded())
-        {
-            downSpellFireball.SetActive(true);
-        }
-
-        Mana -= manaSpellCost;
-        yield return new WaitForSeconds(.3f);
-        rb.gravityScale = gravity;
-        anim.SetBool("Casting", false);
-        pState.casting = false;
     }
+
     public bool Grounded()
     {
         if (Physics2D.Raycast(groundCheckPoint.position, Vector2.down, groundCheckY, whatIsGround)
@@ -579,33 +774,24 @@ public class PlayerController : MonoBehaviour
         {
             return true;
         }
-        else
-        {
-            return false;
-        }
+        return false;
     }
+
     void Jump()
     {
-        // 1. VARIABLE JUMP HEIGHT (The "Release" Logic)
         if (Input.GetKeyUp(KeyCode.Space) && rb.linearVelocityY > 0)
         {
-            // Instead of 0, we heavily reduce the velocity
-            // This ensures even a frame-perfect tap results in a small hop
             rb.linearVelocity = new Vector2(rb.linearVelocityX, rb.linearVelocityY * 0.35f);
-
-            // Reset the buffer so it doesn't try to trigger a jump again immediately
             jumpBufferCounter = 0;
             pState.jumping = false;
         }
 
-        // 2. NORMAL JUMP (The "Start" Logic)
         if (!pState.jumping)
         {
             if (jumpBufferCounter > 0 && coyoteTimeCounter > 0)
             {
                 rb.linearVelocity = new Vector2(rb.linearVelocityX, jumpForce);
                 pState.jumping = true;
-                // Clear buffer immediately upon jumping
                 jumpBufferCounter = 0;
             }
             else if (!Grounded() && airJumpCounter < maxAirJumps && Input.GetKeyDown(KeyCode.Space))

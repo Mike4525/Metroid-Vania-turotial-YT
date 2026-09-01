@@ -2,19 +2,46 @@ using UnityEngine;
 
 public class Zombie : Enemy
 {
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
     protected override void Start()
     {
         base.Start();
-        rb.gravityScale = 12f;
+        if (rb != null)
+        {
+            rb.gravityScale = 12f;
+        }
+        recoilLength = 0.05f; // Custom short recoil length specifically for Zombies
     }
-    // Update is called once per frame
+
     protected override void Update()
     {
         base.Update();
-        if (!isRecoiling)
+
+        // Orient facing direction toward player when not recoiling
+        if (!isRecoiling && PlayerController.Instance != null)
         {
-            transform.position = Vector2.MoveTowards(transform.position, new Vector2(PlayerController.Instance.transform.position.x, transform.position.y), speed * Time.deltaTime);
+            float playerX = PlayerController.Instance.transform.position.x;
+
+            // If player is to the right and we are facing left -> Flip
+            if (playerX > transform.position.x && !facingRight)
+            {
+                Flip();
+            }
+            // If player is to the left and we are facing right -> Flip
+            else if (playerX < transform.position.x && facingRight)
+            {
+                Flip();
+            }
+        }
+    }
+
+    protected override void FixedUpdate()
+    {
+        // Chase player using physics instead of transform manipulation
+        if (!isRecoiling && health > 0 && PlayerController.Instance != null)
+        {
+            // Set velocity toward player X position
+            float direction = facingRight ? 1f : -1f;
+            rb.linearVelocity = new Vector2(direction * speed, rb.linearVelocityY);
         }
     }
 

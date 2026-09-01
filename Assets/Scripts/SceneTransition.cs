@@ -28,10 +28,14 @@ public class SceneTransition : MonoBehaviour
                 if (rb != null)
                 {
                     rb.linearVelocity = Vector2.zero;
+                    rb.angularVelocity = 0f;
                 }
 
                 // Move player to the left entry door's spawn point
                 PlayerController.Instance.transform.position = startPoint.position;
+
+                // Reset dash and jump states immediately on spawn
+                PlayerController.Instance.ResetDashState();
 
                 // Execute the walk-in sequence (which handles turning cutscene back to false when done)
                 StartCoroutine(PlayerController.Instance.WalkIntoNewScene(exitDirection, exitTime));
@@ -57,6 +61,16 @@ public class SceneTransition : MonoBehaviour
             }
 
             transitioning = true;
+
+            // Kill momentum completely before triggering scene load
+            Rigidbody2D playerRb = _other.GetComponent<Rigidbody2D>();
+            if (playerRb != null)
+            {
+                playerRb.linearVelocity = Vector2.zero;
+                playerRb.angularVelocity = 0f;
+            }
+
+            PlayerController.Instance.ResetDashState();
 
             // Mark that we explicitly left out of a RIGHT exit door
             GameManager.Instance.transitionedFromScene = "Right_Exit_Triggered";
