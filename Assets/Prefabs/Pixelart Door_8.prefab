@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 7737771263481861556}
   - component: {fileID: 3470635164464417271}
   - component: {fileID: 4708494656545108250}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Pixelart Door_8
   m_TagString: Untagged
   m_Icon: {fileID: 0}

@@ -2385,7 +2385,7 @@ Camera:
     height: 1
   near clip plane: 0.3
   far clip plane: 1000
-  field of view: 40
+  field of view: 45
   orthographic: 0
   orthographic size: 6
   m_Depth: -1
@@ -5164,12 +5164,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Zombie
   health: 20
+  damage: 1
   recoilLength: 1
   recoilFactor: 20
   isRecoiling: 0
-  player: {fileID: 0}
   speed: 6
-  damage: 1
+  wallCheck: {fileID: 0}
+  pitCheck: {fileID: 0}
+  checkDistance: 0.4
+  whatIsGround:
+    serializedVersion: 2
+    m_Bits: 0
+  facingRight: 1
 --- !u!61 &879210729
 BoxCollider2D:
   m_ObjectHideFlags: 0

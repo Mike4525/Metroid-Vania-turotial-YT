@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: ea9f433b3b43f3b4b85c7abccd94fe1b
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 9100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 296211
+  packageName: 'Fantasy Monster Pack: 5 Handcrafted 2D Creatures'
+  packageVersion: 1.0
+  assetPath: Assets/Fantasy Monster Pack 5 Handcrafted 2D Creatures/monster1/walk/dslime_walk_00.controller
+  uploadId: 699760

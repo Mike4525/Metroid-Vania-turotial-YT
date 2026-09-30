@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 38f054d1f62d0764fa530b148fdf314b
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 9100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 296211
+  packageName: 'Fantasy Monster Pack: 5 Handcrafted 2D Creatures'
+  packageVersion: 1.0
+  assetPath: Assets/Fantasy Monster Pack 5 Handcrafted 2D Creatures/monster3/attack/Armature_attack_00.controller
+  uploadId: 699760

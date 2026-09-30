@@ -11,3 +11,4 @@ public class PlayerStateList : MonoBehaviour
     public bool casting;
     public bool cutscene = false;
 }
+

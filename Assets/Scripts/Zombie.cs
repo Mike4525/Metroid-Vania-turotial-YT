@@ -34,6 +34,22 @@ public class Zombie : Enemy
         }
     }
 
+    protected override void PatrolCheck()
+    {
+        // Optionally keep wall checks so they don't get stuck hugging walls, 
+        // but remove pitCheck entirely so they chase the player off ledges.
+        if (wallCheck != null && whatIsGround.value != 0)
+        {
+            float direction = facingRight ? 1f : -1f;
+            RaycastHit2D hitWall = Physics2D.Raycast(wallCheck.position, new Vector2(direction, 0), checkDistance, whatIsGround);
+
+            if (hitWall.collider != null && !hitWall.collider.transform.IsChildOf(transform))
+            {
+                Flip();
+            }
+        }
+    }
+
     protected override void FixedUpdate()
     {
         // Chase player using physics instead of transform manipulation

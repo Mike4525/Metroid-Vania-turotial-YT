@@ -69,12 +69,14 @@ public class PlayerController : MonoBehaviour
     [Space(5)]
 
     [Header("Mana Settings")]
-    [SerializeField] UnityEngine.UI.Image manaStorage;
     [SerializeField] float mana = 0f;
-    [SerializeField] float manaDrainSpeed;
     [SerializeField] float manaGain;
     bool enoughManaToHeal = false;
     [SerializeField] float manaHealCost = 0.3f;
+    public delegate void OnManaChangedDelegate();
+    [HideInInspector] public OnManaChangedDelegate onManaChangedCallback;
+    private bool blockCastOnRelease = false;
+    private float castLockTimer = 0f;
     [Space(5)]
 
     [Header("Spell Settings")]
@@ -126,6 +128,7 @@ public class PlayerController : MonoBehaviour
 
     private void OnEnable()
     {
+        if (Instance != this) return;
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
@@ -148,6 +151,7 @@ public class PlayerController : MonoBehaviour
 
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
+        if (Instance != this) return;
         ResetPlayerState();
     }
 
@@ -190,42 +194,14 @@ public class PlayerController : MonoBehaviour
 
             anim.Rebind();
             anim.Update(0f);
-        }
-
-        GameObject canvasUI = GameObject.Find("Canvas_UI");
-
-        if (canvasUI != null)
-        {
-            Transform manaContainer = canvasUI.transform.Find("Mana Container");
-
-            if (manaContainer != null)
-            {
-                UnityEngine.UI.Image[] images = manaContainer.GetComponentsInChildren<UnityEngine.UI.Image>(true);
-
-                foreach (UnityEngine.UI.Image img in images)
-                {
-                    if (img.type == UnityEngine.UI.Image.Type.Filled || img.gameObject.name.Contains("Fill") || img.gameObject.name == "Mana")
-                    {
-                        if (img.gameObject.name != "Mana Container" && !img.gameObject.name.ToLower().Contains("background") && !img.gameObject.name.ToLower().Contains("frame"))
-                        {
-                            manaStorage = img;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (manaStorage != null)
-        {
-            manaStorage.type = UnityEngine.UI.Image.Type.Filled;
-            manaStorage.fillAmount = mana;
-        }
+        }        
 
         if (onHealthChangedCallback != null)
         {
             onHealthChangedCallback.Invoke();
         }
+
+        onManaChangedCallback?.Invoke();
 
         if (sr != null) sr.material.color = Color.white;
 
@@ -239,6 +215,7 @@ public class PlayerController : MonoBehaviour
 
     void Start()
     {
+        if (Instance != this) return;
         pState = GetComponent<PlayerStateList>();
 
         if (rb == null) rb = GetComponent<Rigidbody2D>();
@@ -266,6 +243,12 @@ public class PlayerController : MonoBehaviour
         FlashWhileInvincible();
 
         if (Time.timeScale <= 0.1f) return;
+
+        // ADD THIS HERE:
+        if (castLockTimer > 0)
+        {
+            castLockTimer -= Time.deltaTime;
+        }
 
         GetInputs();
         UpdateJumpVariables();
@@ -321,13 +304,11 @@ public class PlayerController : MonoBehaviour
         yAxis = Input.GetAxisRaw("Vertical");
         attack = Input.GetButtonDown("Attack");
 
+        // Only accumulate time here. Do NOT reset variables on button-up here, 
+        // otherwise we clear them before CastSpell() can check them!
         if (Input.GetButton("Cast/Heal"))
         {
             castOrHealTimer += Time.deltaTime;
-        }
-        else
-        {
-            castOrHealTimer = 0;
         }
     }
 
@@ -442,6 +423,7 @@ public class PlayerController : MonoBehaviour
         {
             timeSinceAttack = 0;
             anim.SetTrigger("Attacking");
+            int dir_attack = pState.lookingRight ? 1 : -1;
 
             if (yAxis == 0 || (yAxis < 0 && Grounded()))
             {
@@ -656,19 +638,29 @@ public class PlayerController : MonoBehaviour
 
     void Heal()
     {
-        if (Mana >= manaHealCost) enoughManaToHeal = true;
-        if (Input.GetButton("Cast/Heal") && castOrHealTimer > 0.15f && Health < maxHealth && enoughManaToHeal && !pState.jumping
-            && !pState.dashing && Grounded() && !pState.invincible && !pState.recoilingX)
+        // small tolerance so float rounding never blocks a heart you can afford
+        if (Mana >= manaHealCost - 0.001f) enoughManaToHeal = true;
+
+        bool holding = Input.GetButton("Cast/Heal") && castOrHealTimer > 0.15f;
+        bool canHeal = Health < maxHealth && enoughManaToHeal && Mana > 0f
+                       && !pState.jumping && !pState.dashing && Grounded()
+                       && !pState.invincible && !pState.recoilingX;
+
+        if (holding && canHeal)
         {
-            rb.linearVelocity = new Vector2(0, 0);
+            rb.linearVelocity = Vector2.zero;
             anim.SetBool("Walking", false);
             anim.SetBool("Jumping", false);
             pState.healing = true;
             anim.SetBool("Healing", true);
+            blockCastOnRelease = true;
 
-            healTimer += Time.deltaTime;
-            Mana -= Time.deltaTime * manaDrainSpeed;
-            if (healTimer >= timeToHeal)
+            // Never overshoot the end of a heart, so each one costs EXACTLY manaHealCost
+            float step = Mathf.Min(Time.deltaTime, timeToHeal - healTimer);
+            healTimer += step;
+            Mana -= step * (manaHealCost / timeToHeal);
+
+            if (healTimer >= timeToHeal - 0.0001f)
             {
                 Health++;
                 healTimer = 0;
@@ -684,30 +676,46 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    float Mana
+    public float Mana
     {
         get { return mana; }
         set
         {
             mana = Mathf.Clamp(value, 0, 1);
-            if (manaStorage != null)
+
+            // Invoke the callback so the UI knows to update
+            if (onManaChangedCallback != null)
             {
-                manaStorage.fillAmount = mana;
+                onManaChangedCallback.Invoke();
             }
         }
     }
 
     void CastSpell()
     {
-        if (Input.GetButtonUp("Cast/Heal") && castOrHealTimer <= 0.15f && timeSinceCast >= timeBetweenCast && Mana >= manaSpellCost)
+        // Evaluate button release here, while blockCastOnRelease and castOrHealTimer are still intact
+        if (Input.GetButtonUp("Cast/Heal"))
         {
-            pState.casting = true;
-            timeSinceCast = 0;
-            StartCoroutine(CastCoroutine());
+            if (!blockCastOnRelease && castOrHealTimer <= 0.15f && timeSinceCast >= timeBetweenCast && Mana >= manaSpellCost)
+            {
+                pState.casting = true;
+                timeSinceCast = 0;
+                StartCoroutine(CastCoroutine());
+            }
+
+            // NOW we reset the timer and block because the release has been fully handled
+            castOrHealTimer = 0f;
+            blockCastOnRelease = false;
         }
         else
         {
             timeSinceCast += Time.deltaTime;
+
+            // If the button isn't held at all and we aren't healing, ensure timer stays 0
+            if (!Input.GetButton("Cast/Heal") && !pState.healing)
+            {
+                castOrHealTimer = 0f;
+            }
         }
 
         if (Grounded())

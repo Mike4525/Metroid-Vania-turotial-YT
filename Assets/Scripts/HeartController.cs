@@ -3,72 +3,60 @@ using UnityEngine.UI;
 
 public class HeartController : MonoBehaviour
 {
-    PlayerController player;
+    public Transform heartsParent;
+    public GameObject heartContainerPrefab;
 
     private GameObject[] heartContainers;
     private Image[] heartFills;
-    public Transform heartsParent;
-    public GameObject heartContainerPrefab;
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    private bool bound;
+
+    private void OnEnable() => Bind();
+    private void Start() => Bind();
+    private void OnDisable() => Unbind();
+
+    private void Bind()
     {
-        player = PlayerController.Instance;
-        heartContainers = new GameObject[PlayerController.Instance.maxHealth];
-        heartFills = new Image[PlayerController.Instance.maxHealth];
-
+        if (bound || PlayerController.Instance == null) return;
         PlayerController.Instance.onHealthChangedCallback += UpdateHeartsHUD;
-
-        InstantiateHeartContainers();
+        bound = true;
+        BuildHearts();
         UpdateHeartsHUD();
     }
 
-    // Update is called once per frame
-    void Update()
+    private void Unbind()
     {
-        
+        if (!bound) return;
+        if (PlayerController.Instance != null)
+            PlayerController.Instance.onHealthChangedCallback -= UpdateHeartsHUD;
+        bound = false;
     }
-    void SetHeartContainers()
+
+    private void BuildHearts()
     {
-        for (int i = 0; i < heartContainers.Length; i++)
+        foreach (Transform child in heartsParent) Destroy(child.gameObject);
+
+        int max = PlayerController.Instance.maxHealth;
+        heartContainers = new GameObject[max];
+        heartFills = new Image[max];
+
+        for (int i = 0; i < max; i++)
         {
-            if(i < PlayerController.Instance.maxHealth)
-            {
-                heartContainers[i].SetActive(true);
-            }
-            else
-            {
-                heartContainers[i].SetActive(false);
-            }
-        }
-    }
-    void SetFilledHearts()
-    {
-        for (int i = 0; i < heartFills.Length; i++)
-        {
-            if (i < PlayerController.Instance.Health)
-            {
-                heartFills[i].fillAmount = 1;
-            }
-            else
-            {
-                heartFills[i].fillAmount = 0;
-            }
+            heartContainers[i] = Instantiate(heartContainerPrefab, heartsParent);
+            Transform fill = heartContainers[i].transform.Find("HeartFill");
+            if (fill != null) heartFills[i] = fill.GetComponent<Image>();
         }
     }
 
-    void InstantiateHeartContainers()
+    public void UpdateHeartsHUD()
     {
-        for (int i = 0;i < PlayerController.Instance.maxHealth; i++)
+        if (heartFills == null || PlayerController.Instance == null) return;
+
+        for (int i = 0; i < heartFills.Length; i++)
         {
-            GameObject temp = Instantiate(heartContainerPrefab);
-            temp.transform.SetParent(heartsParent, false);
-            heartContainers[i] = temp;
-            heartFills[i] = temp.transform.Find("HeartFill").GetComponent<Image>();
+            if (heartContainers[i] != null)
+                heartContainers[i].SetActive(i < PlayerController.Instance.maxHealth);
+            if (heartFills[i] != null)
+                heartFills[i].fillAmount = i < PlayerController.Instance.Health ? 1f : 0f;
         }
-    }
-    void UpdateHeartsHUD()
-    {
-        SetHeartContainers();
-        SetFilledHearts();
     }
 }

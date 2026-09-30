@@ -139,9 +139,6 @@ public class Enemy : MonoBehaviour
                 // End recoil state and reset timer cleanly
                 isRecoiling = false;
                 recoilTimer = 0f;
-
-                // Immediately restore movement velocity so the enemy doesn't pause
-                Move();
             }
         }
     }
@@ -150,14 +147,14 @@ public class Enemy : MonoBehaviour
     {
         health -= _damageDone;
 
-        if (!isRecoiling)
-        {
-            isRecoiling = true;
-            recoilTimer = 0f; // IMPORTANT: Reset timer on every new hit
+        if (isRecoiling) return;
 
-            rb.linearVelocity = Vector2.zero;
-            rb.AddForce(-_hitForce * recoilFactor * _hitDirection, ForceMode2D.Impulse);
-        }
+        isRecoiling = true;
+        recoilTimer = 0f;
+
+        // Set velocity directly: instant and independent of Rigidbody mass.
+        // Direction keeps the same sign convention as your current callers (player, fireball, spell).
+        rb.linearVelocity = -_hitDirection.normalized * (_hitForce * recoilFactor);
     }
 
     protected void OnCollisionStay2D(Collision2D _other)
